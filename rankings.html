@@ -124,6 +124,18 @@ window.addEventListener("DOMContentLoaded", function() {
   window.addEventListener("touchstart", stopOnUserAction, true);
 });
 
+const userText = document.createElement("span");
+userText.textContent = "u/dog_eater22 @yifan_bs";
+userText.style.position = "absolute";
+userText.style.top = "14px";
+userText.style.left = "calc(50% + 210px)";
+userText.style.transform = "translateX(0)";
+userText.style.zIndex = "10";
+userText.style.fontSize = "15px";
+userText.style.color = "#555";
+userText.style.fontFamily = "Arial, sans-serif";
+document.body.appendChild(userText);
+
 function resizeChart() {
   d3.select("svg").remove();
 
