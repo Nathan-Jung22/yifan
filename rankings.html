@@ -44,6 +44,86 @@
 <body>
 <script src="https://d3js.org/d3.v6.min.js"></script>
 <script>
+let animationInterval = null;
+let animationIndex = 0;
+let animationStopped = false;
+let animationLabel = null;
+
+function showAnimationLabel(char, color) {
+  // Remove previous label if exists
+  d3.select("body").selectAll(".animation-label").remove();
+  // Find the chart SVG and its dimensions
+  const svg = d3.select("svg");
+  if (!svg.node()) return;
+  const bbox = svg.node().getBoundingClientRect();
+  // Add label as absolutely positioned div
+  animationLabel = d3.select("body")
+    .append("div")
+    .attr("class", "animation-label")
+    .style("position", "fixed")
+    .style("left", (bbox.left + 30) + "px")
+    .style("bottom", "30px")
+    .style("z-index", "100")
+    .style("font-size", "64px")
+    .style("font-weight", "bold")
+    .style("color", color)
+    .style("background", "rgba(255,255,255,0.85)")
+    .style("padding", "18px 48px")
+    .style("border-radius", "16px")
+    .style("box-shadow", "0 2px 12px rgba(0,0,0,0.08)")
+    .style("pointer-events", "none")
+    .text(char);
+}
+
+function hideAnimationLabel() {
+  d3.select("body").selectAll(".animation-label").remove();
+}
+
+function startHighlightAnimation() {
+  d3.csv("rankings.csv").then(function(raw) {
+    const characters = Object.keys(raw[0]).slice(1);
+    function highlightNext() {
+      if (animationStopped) return;
+      d3.selectAll(".line").classed("highlight", false).classed("dim", true);
+      d3.selectAll(".character-label").classed("highlight", false).classed("dim", true);
+
+      const char = characters[animationIndex];
+      const color = d3.schemeCategory10[animationIndex % 10];
+      d3.selectAll(".line").filter(d => d[0] === char)
+        .classed("highlight", true).classed("dim", false);
+      d3.selectAll(".character-label").filter(d => d[0] === char)
+        .classed("highlight", true).classed("dim", false);
+
+      showAnimationLabel(char, color);
+
+      animationIndex = (animationIndex + 1) % characters.length;
+    }
+    highlightNext();
+    animationInterval = setInterval(highlightNext, 1000);
+  });
+}
+
+function stopHighlightAnimation() {
+  animationStopped = true;
+  clearInterval(animationInterval);
+  d3.selectAll(".line").classed("highlight", false).classed("dim", false);
+  d3.selectAll(".character-label").classed("highlight", false).classed("dim", false);
+  hideAnimationLabel();
+}
+
+window.addEventListener("DOMContentLoaded", function() {
+  startHighlightAnimation();
+  function stopOnUserAction() {
+    stopHighlightAnimation();
+    window.removeEventListener("mousedown", stopOnUserAction, true);
+    window.removeEventListener("keydown", stopOnUserAction, true);
+    window.removeEventListener("touchstart", stopOnUserAction, true);
+  }
+  window.addEventListener("mousedown", stopOnUserAction, true);
+  window.addEventListener("keydown", stopOnUserAction, true);
+  window.addEventListener("touchstart", stopOnUserAction, true);
+});
+
 function resizeChart() {
   d3.select("svg").remove();
 
