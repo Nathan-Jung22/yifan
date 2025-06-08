@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font: 12px Arial;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
+    .line {
+      fill: none;
+      stroke-width: 1.5px;
+      opacity: 0.3;
+      transition: opacity 0.3s;
+    }
+    .highlight {
+      opacity: 1 !important;
+      stroke-width: 3px;
+    }
+    .dim {
+      opacity: 0.1;
+    }
+    .axis path,
+    .axis line {
+      fill: none;
+      stroke: #000;
+      shape-rendering: crispEdges;
+    }
+    .month-line {
+      stroke: #bbb;
+      stroke-width: 1px;
+      opacity: 0.7;
+      shape-rendering: crispEdges;
+    }
+  </style>
+</head>
+<body>
+<script src="https://d3js.org/d3.v6.min.js"></script>
+<script>
+function resizeChart() {
+  d3.select("svg").remove();
+
+  d3.csv("rankings.csv").then(function(raw) {
+    const years = raw.map(d => d[Object.keys(d)[0]]);
+    const characters = Object.keys(raw[0]).slice(1);
+
+    const data = [];
+    raw.forEach(row => {
+      const year = row[Object.keys(row)[0]];
+      characters.forEach(character => {
+        const value = row[character];
+        if (value === "" || value == null) {
+          data.push({ character, year, rank: null });
+        } else {
+          const rank = +value;
+          data.push({ character, year, rank });
+        }
+      });
+    });
+
+    // Use window size for chart dimensions
+    var margin = {top: 50, right: 200, bottom: 50, left: 70},
+        width = window.innerWidth - margin.left - margin.right,
+        height = window.innerHeight - margin.top - margin.bottom;
+
+    var svg = d3.select("body").append("svg")
+        .attr("width", width + margin.left + margin.right)
+        .attr("height", height + margin.top + margin.bottom)
+      .append("g")
+        .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+    var x = d3.scalePoint()
+        .domain(years)
+        .range([0, width]);
+
+    var y = d3.scaleLinear()
+        .domain([d3.max(data, d => d.rank), 1])
+        .range([height, 0]);
+
+    // Draw vertical lines for each month
+    svg.selectAll(".month-line")
+      .data(years)
+      .enter()
+      .append("line")
+      .attr("class", "month-line")
+      .attr("x1", d => x(d))
+      .attr("x2", d => x(d))
+      .attr("y1", 0)
+      .attr("y2", height);
+
+    svg.append("g")
+        .attr("transform", "translate(0," + height + ")")
+        .call(d3.axisBottom(x));
+
+    svg.append("g")
+        .call(d3.axisLeft(y));
+
+    var line = d3.line()
+        .defined(d => d.rank !== null && !isNaN(d.rank))
+        .x(d => x(d.year))
+        .y(d => y(d.rank));
+    var characterData = d3.groups(data, d => d.character);
+    let selectedCharacter = null;
+
+    svg.selectAll(".line")
+      .data(characterData)
+      .enter().append("path")
+      .attr("class", "line")
+      .attr("d", d => line(d[1].filter(p => p.rank !== null && !isNaN(p.rank))))
+      .attr("stroke", (d, i) => d3.schemeCategory10[i % 10]);
+
+    svg.selectAll(".hover-path")
+      .data(characterData)
+      .enter().append("path")
+      .attr("class", "hover-path")
+      .attr("d", d => line(d[1].filter(p => p.rank !== null && !isNaN(p.rank))))
+      .attr("stroke", "transparent")
+      .attr("stroke-width", 16)
+      .attr("fill", "none")
+      .style("cursor", "pointer")
+      .on("mouseover", function(event, d) {
+        if (selectedCharacter) return;
+        d3.selectAll(".line").classed("dim", true);
+        svg.selectAll(".line")
+          .filter(l => l[0] === d[0])
+          .classed("dim", false)
+          .classed("highlight", true);
+
+        d3.selectAll(".character-label").classed("dim", true);
+        d3.selectAll(".character-label")
+          .filter(l => l[0] === d[0])
+          .classed("dim", false)
+          .classed("highlight", true);
+
+        svg.on("mousemove", function(event) {
+          const [mx] = d3.pointer(event, this);
+          let minDist = Infinity, closestYear = years[0];
+          x.domain().forEach(year => {
+            const dist = Math.abs(x(year) - mx);
+            if (dist < minDist) {
+              minDist = dist;
+              closestYear = year;
+            }
+          });
+          const point = d[1].find(p => p.year === closestYear && p.rank !== null && !isNaN(p.rank));
+          svg.selectAll(".hover-label").remove();
+          if (point) {
+            svg.append("text")
+              .attr("class", "hover-label")
+              .attr("x", x(point.year))
+              .attr("y", y(point.rank) - 10)
+              .attr("text-anchor", "middle")
+              .style("font-size", "12px")
+              .style("font-weight", "bold")
+              .style("fill", d3.schemeCategory10[characters.indexOf(d[0]) % 10])
+              .text(point.rank);
+          }
+        });
+      })
+      .on("mouseout", function(event, d) {
+        if (selectedCharacter) return;
+        d3.selectAll(".line").classed("dim", false).classed("highlight", false);
+        d3.selectAll(".character-label").classed("dim", false).classed("highlight", false);
+        svg.selectAll(".hover-label").remove();
+        svg.on("mousemove", null);
+      })
+      .on("click", function(event, d) {
+        event.stopPropagation();
+        if (selectedCharacter === d[0]) {
+          // Unselect if already selected
+          selectedCharacter = null;
+          d3.selectAll(".line").classed("dim", false).classed("highlight", false);
+          d3.selectAll(".character-label").classed("dim", false).classed("highlight", false);
+          svg.selectAll(".hover-label").remove();
+          svg.on("mousemove", null);
+        } else {
+          selectedCharacter = d[0];
+          d3.selectAll(".line").classed("dim", true).classed("highlight", false);
+          svg.selectAll(".line")
+            .filter(l => l[0] === d[0])
+            .classed("dim", false)
+            .classed("highlight", true);
+
+          d3.selectAll(".character-label").classed("dim", true).classed("highlight", false);
+          d3.selectAll(".character-label")
+            .filter(l => l[0] === d[0])
+            .classed("dim", false)
+            .classed("highlight", true);
+
+          svg.on("mousemove", function(event) {
+            const [mx] = d3.pointer(event, this);
+            let minDist = Infinity, closestYear = years[0];
+            x.domain().forEach(year => {
+              const dist = Math.abs(x(year) - mx);
+              if (dist < minDist) {
+                minDist = dist;
+                closestYear = year;
+              }
+            });
+            const point = d[1].find(p => p.year === closestYear && p.rank !== null && !isNaN(p.rank));
+            svg.selectAll(".hover-label").remove();
+            if (point) {
+              svg.append("text")
+                .attr("class", "hover-label")
+                .attr("x", x(point.year))
+                .attr("y", y(point.rank) - 10)
+                .attr("text-anchor", "middle")
+                .style("font-size", "12px")
+                .style("font-weight", "bold")
+                .style("fill", d3.schemeCategory10[characters.indexOf(d[0]) % 10])
+                .text(point.rank);
+            }
+          });
+        }
+      });
+
+    // Deselect on click outside
+    d3.select(window).on("click", function(event) {
+      if (selectedCharacter) {
+        selectedCharacter = null;
+        d3.selectAll(".line").classed("dim", false).classed("highlight", false);
+        d3.selectAll(".character-label").classed("dim", false).classed("highlight", false);
+        d3.select("svg").selectAll(".hover-label").remove();
+        d3.select("svg").on("mousemove", null);
+      }
+    });
+
+    const labelGroup = svg.append("g")
+      .attr("class", "character-labels");
+    labelGroup.selectAll("text")
+      .data(characterData.filter(d => d[1].some(p => p.rank !== null && !isNaN(p.rank))))
+      .enter()
+      .append("text")
+      .attr("class", "character-label")
+      .attr("x", width + 8)
+      .attr("y", d => {
+        const last = d[1].slice().reverse().find(p => p.rank !== null && !isNaN(p.rank));
+        return last ? y(last.rank) : y.range()[0];
+      })
+      .attr("alignment-baseline", "middle")
+      .style("fill", (d, i) => d3.schemeCategory10[i % 10])
+      .style("font-weight", "bold")
+      .style("cursor", "pointer")
+      .text(d => d[0])
+      .on("mouseover", function(event, d) {
+        if (selectedCharacter) return;
+        d3.selectAll(".line").classed("dim", true);
+        svg.selectAll(".line")
+          .filter(l => l[0] === d[0])
+          .classed("dim", false)
+          .classed("highlight", true);
+        d3.selectAll(".character-label").classed("dim", true);
+        d3.select(this).classed("dim", false).classed("highlight", true);
+      })
+      .on("mouseout", function(event, d) {
+        if (selectedCharacter) return;
+        d3.selectAll(".line").classed("dim", false).classed("highlight", false);
+        d3.selectAll(".character-label").classed("dim", false).classed("highlight", false);
+      })
+      .on("click", function(event, d) {
+        event.stopPropagation();
+        if (selectedCharacter === d[0]) {
+          // Unselect if already selected
+          selectedCharacter = null;
+          d3.selectAll(".line").classed("dim", false).classed("highlight", false);
+          d3.selectAll(".character-label").classed("dim", false).classed("highlight", false);
+          svg.selectAll(".hover-label").remove();
+          svg.on("mousemove", null);
+        } else {
+          selectedCharacter = d[0];
+          d3.selectAll(".line").classed("dim", true).classed("highlight", false);
+          svg.selectAll(".line")
+            .filter(l => l[0] === d[0])
+            .classed("dim", false)
+            .classed("highlight", true);
+
+          d3.selectAll(".character-label").classed("dim", true).classed("highlight", false);
+          d3.selectAll(".character-label")
+            .filter(l => l[0] === d[0])
+            .classed("dim", false)
+            .classed("highlight", true);
+
+          svg.on("mousemove", function(event) {
+            const [mx] = d3.pointer(event, this);
+            let minDist = Infinity, closestYear = years[0];
+            x.domain().forEach(year => {
+              const dist = Math.abs(x(year) - mx);
+              if (dist < minDist) {
+                minDist = dist;
+                closestYear = year;
+              }
+            });
+            const point = d[1].find(p => p.year === closestYear && p.rank !== null && !isNaN(p.rank));
+            svg.selectAll(".hover-label").remove();
+            if (point) {
+              svg.append("text")
+                .attr("class", "hover-label")
+                .attr("x", x(point.year))
+                .attr("y", y(point.rank) - 10)
+                .attr("text-anchor", "middle")
+                .style("font-size", "12px")
+                .style("font-weight", "bold")
+                .style("fill", d3.schemeCategory10[characters.indexOf(d[0]) % 10])
+                .text(point.rank);
+            }
+          });
+        }
+      });
+  });
+}
+
+const searchBar = document.createElement("input");
+searchBar.type = "text";
+searchBar.placeholder = "Search character...";
+searchBar.style.position = "absolute";
+searchBar.style.top = "10px";
+searchBar.style.left = "50%";
+searchBar.style.transform = "translateX(-50%)";
+searchBar.style.zIndex = "10";
+searchBar.style.fontSize = "16px";
+searchBar.style.padding = "6px 12px";
+searchBar.style.borderRadius = "4px";
+searchBar.style.border = "1px solid #ccc";
+document.body.appendChild(searchBar);
+
+searchBar.addEventListener("input", function() {
+  const query = this.value.trim().toLowerCase();
+  d3.selectAll(".line").classed("highlight", false).classed("dim", false);
+  d3.selectAll(".character-label").classed("highlight", false).classed("dim", false);
+  if (query.length > 0) {
+    let found = false;
+    d3.selectAll(".line").each(function(d) {
+      if (d[0].toLowerCase().includes(query)) {
+        d3.select(this).classed("highlight", true).classed("dim", false);
+        found = true;
+      } else {
+        d3.select(this).classed("dim", true);
+      }
+    });
+    d3.selectAll(".character-label").each(function(d) {
+      if (d[0].toLowerCase().includes(query)) {
+        d3.select(this).classed("highlight", true).classed("dim", false);
+      } else {
+        d3.select(this).classed("dim", true);
+      }
+    });
+  }
+});
+
+
+// Initial draw
+resizeChart();
+// Redraw on resize
+window.addEventListener("resize", resizeChart);
+</script>
+</body>
+</html>
